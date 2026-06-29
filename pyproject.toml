@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "model-gateway"
+version = "0.1.0"
+description = "Define MCP tools in JSON, not Python. One config file, any model, any role."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [
+    { name = "model-gateway contributors" },
+]
+keywords = ["mcp", "llm", "claude-code", "openrouter", "gpt", "model-gateway"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
+dependencies = [
+    "openai>=1.0",
+    "mcp>=1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/your-username/model-gateway"
+Repository = "https://github.com/your-username/model-gateway"
+
+[project.scripts]
+mg = "model_gateway.cli:main"
