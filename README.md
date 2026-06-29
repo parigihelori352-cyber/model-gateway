@@ -1,143 +1,103 @@
-# model-gateway — Define MCP Tools in JSON, Not Python
+# model-gateway — 把每个任务路由到最对口的模型
 
-**One MCP server, any model, any role. Add a new LLM-powered tool in 5 minutes by writing a JSON block — zero Python code.**
+**好用的模型缺多模态，全能的模型又太贵。model-gateway 做一件事：不同任务自动走不同模型，好的用在对的地方，贵的只用在值的地方。**
 
-## Why
+## 问题
 
-Every MCP server follows the same pattern: define a tool schema, write a handler, call an LLM, return the result. The only thing that changes between tools is the **system prompt, model, and input schema**. So why write Python for each one?
+现在的模型格局是这样的：
 
-model-gateway separates the *what* from the *how*:
+| 模型 | 优势 | 短板 |
+|------|------|------|
+| DeepSeek | 推理强、便宜、上下文大 | 没有多模态 |
+| 豆包 (Doubao) | 视觉理解出色、便宜 | 复杂推理不如 DeepSeek |
+| GPT-5.4 | 架构设计、深度分析顶尖 | 贵，日常用浪费 |
+| Gemini 2.5 Flash | 多语言翻译质量高、便宜 | 代码能力一般 |
+
+**一个模型打不了全场。** 你既想用 DeepSeek 做日常推理，又想用豆包分析截图图表，偶尔还需要 GPT-5.4 做复杂架构规划。切换模型、管理 API key、记住哪个模型适合什么任务——这些都是认知负担。
+
+## 解决方案
+
+model-gateway 是一个**模型路由器**。你正常使用 Claude Code，它在背后把不同任务自动分发到最合适的模型：
 
 ```
-config.json  ←──  WHAT: providers, models, tools, system prompts (you edit this)
-    │
-    ▼
-server.py    ←──  HOW: MCP protocol, API routing, multimodal encoding (never touch this)
-    │
-    ▼
-Claude Code  ←──  sees N tools, each powered by a different model
+你的任务                          →  路由到
+──────────────────────────────────────────
+分析这张截图里有几个按钮            →  豆包 Seed 2.1 Pro (视觉，便宜)
+设计微服务事务补偿方案              →  GPT-5.4 (深度推理，贵但值)
+审查 auth.py 有没有安全漏洞         →  GPT-5.4 (安全审计，不能省钱)
+"Redis 集群 vs 哨兵，怎么选？"      →  GPT-5.4 (决策分析)
+翻译产品文档到日文                  →  Gemini 2.5 Flash (翻译，便宜)
+其他所有事情                        →  DeepSeek (你当前用的默认模型)
 ```
 
-## Quick Start
+**好的模型用在对的地方，贵的模型只用在值的地方。**
+
+## 快速开始
 
 ```bash
-# 1. Install
+# 1. 安装
 pip install -e .
 
-# 2. Set API keys (or put them in ~/.claude/settings.json → env)
-export OPENROUTER_API_KEY="sk-or-v1-xxx"
+# 2. 设置 API Key（在 ~/.claude/settings.json 的 env 块）
+#   "OPENROUTER_API_KEY": "sk-or-v1-xxx",   # 用于 GPT-5.4、Gemini 等
+#   "ARK_API_KEY": "your-ark-key"           # 用于豆包视觉
 
-# 3. Define a tool — add this to config.json → capabilities:
+# 3. 添加工具——改 config.json，加一段 JSON：
 # {
-#   "tool": "my_summarizer",
-#   "description": "Summarize text concisely",
+#   "tool": "translate_to_japanese",
+#   "description": "Translate text to Japanese",
 #   "provider": "openrouter",
-#   "model": "openai/gpt-4o-mini",
-#   "system_prompt": "Summarize the text. Output only the summary.",
+#   "model": "google/gemini-2.5-flash",
+#   "system_prompt": "Translate to natural Japanese. Preserve tone.",
 #   "input_schema": {
 #     "type": "object",
 #     "properties": {
-#       "text": { "type": "string", "description": "Text to summarize" }
+#       "text": { "type": "string", "description": "Text to translate" }
 #     },
 #     "required": ["text"]
 #   }
 # }
 
-# 4. Restart Claude Code — my_summarizer appears automatically.
+# 4. 重启 Claude Code —— 新工具自动出现。
 ```
 
-## How It Works
+## 架构
 
-### Providers (API backends)
-
-Configure once in `config.json` → `providers`. Each provider knows its `base_url` and which env var holds the key:
-
-| Provider | Env Var | Used for |
-|----------|---------|----------|
-| OpenRouter | `OPENROUTER_API_KEY` | GPT-5.4, Gemini, Claude… (any model on OpenRouter) |
-| OpenAI | `OPENAI_API_KEY` | Direct GPT-4o access |
-| Ark (Volcano) | `ARK_API_KEY` | Doubao vision models |
-
-Add a new provider in one JSON block — no code needed.
-
-### Tools (capabilities)
-
-Every tool is a JSON object with:
-
-| Field | Purpose |
-|-------|---------|
-| `tool` | MCP tool name (snake_case) |
-| `description` | Shown to Claude Code |
-| `provider` | Which provider to route through |
-| `model` | Model ID (OpenRouter format, e.g. `openai/gpt-5.4`) |
-| `system_prompt` | The role prompt — this IS the tool's behavior |
-| `input_schema` | JSON Schema — defines what arguments the tool accepts |
-| `accepts_images` | (optional) Enable multimodal image analysis |
-| `reasoning` | (optional) Enable reasoning tokens + effort control |
-
-### Example: Build a code reviewer in 1 minute
-
-```json
-{
-  "tool": "code_reviewer",
-  "description": "Review code for bugs and improvements",
-  "provider": "openrouter",
-  "model": "openai/gpt-5.4",
-  "system_prompt": "You are a senior code reviewer. Find bugs, edge cases, and suggest improvements. Be specific — reference line numbers.",
-  "reasoning": { "enabled": true, "default_effort": "medium" },
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "code": { "type": "string", "description": "Code to review" },
-      "language": { "type": "string", "description": "Programming language" }
-    },
-    "required": ["code"]
-  }
-}
+```
+Claude Code (你用的是 DeepSeek 也没关系)
+    │
+    ├── "帮我看看这张架构图"  ──→  vision_ask  ──→  豆包 Seed 2.1 Pro
+    ├── "设计一个迁移方案"    ──→  gpt_plan     ──→  GPT-5.4
+    ├── "审查这段代码"        ──→  gpt_review   ──→  GPT-5.4
+    ├── "翻译成中文"          ──→  gpt_translate ──→  Gemini 2.5 Flash
+    └── ...更多工具，只需在 config.json 加一段 JSON
 ```
 
-Restart Claude Code. Done. `code_reviewer` is now an MCP tool powered by GPT-5.4 with reasoning.
+核心思路：**config.json 定义"什么任务→什么模型→什么提示词"，server.py 负责 MCP 协议和 API 调用。加新工具零 Python 代码。**
 
-## Built-in Tools
+## 内置工具
 
-These come pre-configured as examples — delete or modify them freely:
+| 工具 | 走哪个模型 | 做什么 | 为什么是这个模型 |
+|------|-----------|--------|------------------|
+| `vision_ask` | 豆包 Seed 2.1 Pro | 图片分析、截图理解、图表解读 | 视觉理解好，便宜 |
+| `gpt_plan` | GPT-5.4 | 架构设计、实现方案规划 | 深度推理，复杂任务不省钱 |
+| `gpt_review` | GPT-5.4 | 代码审查（安全/正确性/架构） | 找隐蔽漏洞需要深度 |
+| `gpt_decide` | GPT-5.4 | 多方案决策分析 | 权衡博弈需要强推理 |
+| `gpt_design_workflow` | GPT-5.4 | 生成 Workflow 编排脚本 | 多步骤编排需要全局视角 |
+| `gpt_translate` | Gemini 2.5 Flash | 多语言翻译 | 翻译质量高，便宜 |
 
-| Tool | Default Model | Purpose |
-|------|---------------|---------|
-| `vision_ask` | Doubao Seed 2.1 Pro | Multimodal image analysis |
-| `gpt_plan` | GPT-5.4 | Architecture & implementation planning |
-| `gpt_review` | GPT-5.4 | Deep code review (security/correctness/architecture) |
-| `gpt_decide` | GPT-5.4 | Multi-option trade-off analysis |
-| `gpt_design_workflow` | GPT-5.4 | Claude Code Workflow script generation |
-| `gpt_translate` | Gemini 2.5 Flash | High-quality translation |
-
-## CLI
-
-All tools are also available from the command line:
+## CLI 使用
 
 ```bash
-# Vision analysis
-mg vision photo.jpg "Describe this image in detail"
-
-# Architecture planning (GPT-5.4 + reasoning)
-mg plan "Design a microservice saga pattern" --budget high
-
-# Deep code review
+mg vision photo.jpg "描述这张图片"
+mg plan "设计微服务事务补偿机制" --budget high
 mg review auth.py --focus security
-
-# Trade-off analysis
-mg decide "Redis Cluster" "Sentinel" "Cloud managed" --criteria "perf,cost,ops"
-
-# Workflow script generation
-mg workflow "Migrate auth to JWT with zero downtime" --quality exhaustive
-
-# Translation
+mg decide "Redis 集群" "哨兵方案" "云服务" --criteria "性能,成本,运维"
+mg workflow "迁移认证系统到 JWT，零停机" --quality exhaustive
 mg translate "Hello world" Chinese
 ```
 
-## Claude Code Integration
-
-Add to `~/.claude/settings.json`:
+## Claude Code 集成
 
 ```json
 {
@@ -151,18 +111,11 @@ Add to `~/.claude/settings.json`:
 }
 ```
 
-## Security
+## 安全
 
-- **No API keys in config.** All keys come from environment variables. `config.json` only stores `api_key_env` references.
-- **`.gitignore` excludes `config.json`** — your tool definitions stay local.
-- **`save()` strips keys.** The config manager writes only `api_key_env` references, never resolved keys.
-
-## Design Philosophy
-
-- **Config is the API.** The shape of a tool IS its definition. No indirection.
-- **No code for new tools.** If you can write a system prompt, you can build an MCP tool.
-- **Zero overhead.** The framework does nothing but route and serialize. Your prompts do the work.
-- **Vendor freedom.** Swap between OpenRouter, OpenAI, Ark, or your own provider — tools stay identical.
+- **API Key 不在仓库里**，全部走环境变量
+- `config.json` 已被 `.gitignore` 排除，不会意外提交
+- 配置写入时自动剥离已解析的 Key
 
 ## License
 
