@@ -1,103 +1,37 @@
-# model-gateway — 把每个任务路由到最对口的模型
+# model-gateway
 
-**好用的模型缺多模态，全能的模型又太贵。model-gateway 做一件事：不同任务自动走不同模型，好的用在对的地方，贵的只用在值的地方。**
+`model-gateway` is a small MCP server and command-line tool that routes named tasks to the language models you choose. Define a tool once in JSON, then use it from an MCP client or the terminal—without writing a separate Python integration for every task.
 
-## 问题
+API keys are read from environment variables and are never stored in the repository.
 
-现在的模型格局是这样的：
+## Quick start
 
-| 模型 | 优势 | 短板 |
-|------|------|------|
-| DeepSeek | 推理强、便宜、上下文大 | 没有多模态 |
-| 豆包 (Doubao) | 视觉理解出色、便宜 | 复杂推理不如 DeepSeek |
-| GPT-5.4 | 架构设计、深度分析顶尖 | 贵，日常用浪费 |
-| Gemini 2.5 Flash | 多语言翻译质量高、便宜 | 代码能力一般 |
-
-**一个模型打不了全场。** 你既想用 DeepSeek 做日常推理，又想用豆包分析截图图表，偶尔还需要 GPT-5.4 做复杂架构规划。切换模型、管理 API key、记住哪个模型适合什么任务——这些都是认知负担。
-
-## 解决方案
-
-model-gateway 是一个**模型路由器**。你正常使用 Claude Code，它在背后把不同任务自动分发到最合适的模型：
-
-```
-你的任务                          →  路由到
-──────────────────────────────────────────
-分析这张截图里有几个按钮            →  豆包 Seed 2.1 Pro (视觉，便宜)
-设计微服务事务补偿方案              →  GPT-5.4 (深度推理，贵但值)
-审查 auth.py 有没有安全漏洞         →  GPT-5.4 (安全审计，不能省钱)
-"Redis 集群 vs 哨兵，怎么选？"      →  GPT-5.4 (决策分析)
-翻译产品文档到日文                  →  Gemini 2.5 Flash (翻译，便宜)
-其他所有事情                        →  DeepSeek (你当前用的默认模型)
-```
-
-**好的模型用在对的地方，贵的模型只用在值的地方。**
-
-## 快速开始
+Requirements: Python 3.10 or later and an API key for the provider you choose.
 
 ```bash
-# 1. 安装
-pip install -e .
-
-# 2. 设置 API Key（在 ~/.claude/settings.json 的 env 块）
-#   "OPENROUTER_API_KEY": "sk-or-v1-xxx",   # 用于 GPT-5.4、Gemini 等
-#   "ARK_API_KEY": "your-ark-key"           # 用于豆包视觉
-
-# 3. 添加工具——改 config.json，加一段 JSON：
-# {
-#   "tool": "translate_to_japanese",
-#   "description": "Translate text to Japanese",
-#   "provider": "openrouter",
-#   "model": "google/gemini-2.5-flash",
-#   "system_prompt": "Translate to natural Japanese. Preserve tone.",
-#   "input_schema": {
-#     "type": "object",
-#     "properties": {
-#       "text": { "type": "string", "description": "Text to translate" }
-#     },
-#     "required": ["text"]
-#   }
-# }
-
-# 4. 重启 Claude Code —— 新工具自动出现。
+git clone https://github.com/parigihelori352-cyber/model-gateway.git
+cd model-gateway
+python -m pip install -e .
+mg config init
 ```
 
-## 架构
-
-```
-Claude Code (你用的是 DeepSeek 也没关系)
-    │
-    ├── "帮我看看这张架构图"  ──→  vision_ask  ──→  豆包 Seed 2.1 Pro
-    ├── "设计一个迁移方案"    ──→  gpt_plan     ──→  GPT-5.4
-    ├── "审查这段代码"        ──→  gpt_review   ──→  GPT-5.4
-    ├── "翻译成中文"          ──→  gpt_translate ──→  Gemini 2.5 Flash
-    └── ...更多工具，只需在 config.json 加一段 JSON
-```
-
-核心思路：**config.json 定义"什么任务→什么模型→什么提示词"，server.py 负责 MCP 协议和 API 调用。加新工具零 Python 代码。**
-
-## 内置工具
-
-| 工具 | 走哪个模型 | 做什么 | 为什么是这个模型 |
-|------|-----------|--------|------------------|
-| `vision_ask` | 豆包 Seed 2.1 Pro | 图片分析、截图理解、图表解读 | 视觉理解好，便宜 |
-| `gpt_plan` | GPT-5.4 | 架构设计、实现方案规划 | 深度推理，复杂任务不省钱 |
-| `gpt_review` | GPT-5.4 | 代码审查（安全/正确性/架构） | 找隐蔽漏洞需要深度 |
-| `gpt_decide` | GPT-5.4 | 多方案决策分析 | 权衡博弈需要强推理 |
-| `gpt_design_workflow` | GPT-5.4 | 生成 Workflow 编排脚本 | 多步骤编排需要全局视角 |
-| `gpt_translate` | Gemini 2.5 Flash | 多语言翻译 | 翻译质量高，便宜 |
-
-## CLI 使用
+`mg config init` creates `config.json` in the directory where you run it. It is ignored by Git, so it is safe to customize locally. The included starter configuration uses the OpenAI-compatible API:
 
 ```bash
-mg vision photo.jpg "描述这张图片"
-mg plan "设计微服务事务补偿机制" --budget high
-mg review auth.py --focus security
-mg decide "Redis 集群" "哨兵方案" "云服务" --criteria "性能,成本,运维"
-mg workflow "迁移认证系统到 JWT，零停机" --quality exhaustive
-mg translate "Hello world" Chinese
+# PowerShell
+$env:OPENAI_API_KEY = "your-key"
+
+# macOS / Linux
+export OPENAI_API_KEY="your-key"
 ```
 
-## Claude Code 集成
+Then start the MCP server:
+
+```bash
+python -m model_gateway.mcp_server
+```
+
+For Claude Code, add this entry to your MCP settings. Replace the example path with the folder you cloned:
 
 ```json
 {
@@ -105,17 +39,60 @@ mg translate "Hello world" Chinese
     "model-gateway": {
       "command": "python",
       "args": ["-m", "model_gateway.mcp_server"],
-      "cwd": "/path/to/model-gateway"
+      "cwd": "C:/path/to/model-gateway",
+      "env": {
+        "OPENAI_API_KEY": "your-key"
+      }
     }
   }
 }
 ```
 
-## 安全
+Use forward slashes on Windows in this JSON. Alternatively, set `MODEL_GATEWAY_CONFIG` to an absolute path to use a configuration file stored elsewhere.
 
-- **API Key 不在仓库里**，全部走环境变量
-- `config.json` 已被 `.gitignore` 排除，不会意外提交
-- 配置写入时自动剥离已解析的 Key
+## Configuration
+
+Start from [`config.example.json`](config.example.json). Each item in `capabilities` becomes an MCP tool at server startup.
+
+```json
+{
+  "tool": "summarize_release_notes",
+  "description": "Summarize release notes for a non-technical reader.",
+  "provider": "openai",
+  "model": "gpt-4o-mini",
+  "system_prompt": "Write a clear short summary for a non-technical reader.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "text": { "type": "string", "description": "Release notes to summarize." }
+    },
+    "required": ["text"]
+  }
+}
+```
+
+Providers must expose an OpenAI-compatible chat-completions API. The configuration supports OpenAI and OpenRouter out of the box; add another provider by setting its `base_url` and the name of its key environment variable. Do not put a real API key in `config.json`, examples, screenshots, or commits.
+
+## Command line
+
+The project includes task-oriented commands for configurations that define the matching capability names:
+
+```bash
+mg config path
+mg config list
+mg review path/to/file.py --focus security
+mg review placeholder --stdin < path/to/file.py
+```
+
+For a custom configuration, use the dynamic MCP tools. The CLI command names `vision`, `plan`, `review`, `decide`, `workflow`, and `translate` require capabilities named `vision_ask`, `gpt_plan`, `gpt_review`, `gpt_decide`, `gpt_design_workflow`, and `gpt_translate` respectively.
+
+## How paths are resolved
+
+Configuration is located in this order: an explicit path supplied by code, `MODEL_GATEWAY_CONFIG`, `config.json` in the current working directory, then `config.json` in the editable project checkout. Run `mg config path` to see the file that will be used.
+
+## Status and limitations
+
+This is an early project. Model identifiers and provider-specific reasoning parameters vary by provider; verify those values in the provider's current documentation before relying on them in production. Keep the server process and its environment private because they contain access to your API keys.
 
 ## License
 

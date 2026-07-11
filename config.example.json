@@ -1,0 +1,41 @@
+{
+  "_comment": "Copy this file to config.json (or run: mg config init). Put API keys in environment variables, never in this file.",
+  "server_name": "model-gateway",
+  "providers": {
+    "openai": {
+      "base_url": "https://api.openai.com/v1",
+      "api_key_env": "OPENAI_API_KEY"
+    },
+    "openrouter": {
+      "base_url": "https://openrouter.ai/api/v1",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "headers": { "X-Title": "model-gateway" }
+    }
+  },
+  "capabilities": [
+    {
+      "tool": "ask",
+      "description": "Ask a general text question using the configured model.",
+      "provider": "openai",
+      "model": "gpt-4o-mini",
+      "system_prompt": "Answer clearly and accurately. State uncertainty when needed.",
+      "input_schema": {
+        "type": "object",
+        "properties": { "question": { "type": "string", "description": "The question to answer." } },
+        "required": ["question"]
+      }
+    },
+    {
+      "tool": "plan",
+      "description": "Create a practical implementation plan for a technical task.",
+      "provider": "openai",
+      "model": "gpt-4o-mini",
+      "system_prompt": "Produce a concise, practical plan with steps, trade-offs, and risks.",
+      "input_schema": {
+        "type": "object",
+        "properties": { "task": { "type": "string", "description": "Task to plan." } },
+        "required": ["task"]
+      }
+    }
+  ]
+}

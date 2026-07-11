@@ -7,12 +7,30 @@ import json
 import os
 from pathlib import Path
 
-DEFAULT_CONFIG_PATH = Path(__file__).parent.parent / "config.json"
+PACKAGE_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_CONFIG_PATH = PACKAGE_ROOT / "config.json"
+EXAMPLE_CONFIG_PATH = PACKAGE_ROOT / "config.example.json"
+
+
+def resolve_config_path(config_path: str | None = None) -> Path:
+    """Find configuration without tying users to a particular checkout path.
+
+    Priority: explicit argument, MODEL_GATEWAY_CONFIG, config.json in the
+    current directory, then config.json next to an editable checkout.
+    """
+    if config_path:
+        return Path(config_path).expanduser()
+    if env_path := os.environ.get("MODEL_GATEWAY_CONFIG"):
+        return Path(env_path).expanduser()
+    working_copy = Path.cwd() / "config.json"
+    if working_copy.exists():
+        return working_copy
+    return DEFAULT_CONFIG_PATH
 
 
 def load(config_path: str | None = None) -> dict:
     """Load full config with env var injection for provider API keys."""
-    path = Path(config_path) if config_path else DEFAULT_CONFIG_PATH
+    path = resolve_config_path(config_path)
 
     cfg = {}
     if path.exists():
@@ -30,7 +48,8 @@ def load(config_path: str | None = None) -> dict:
 
 def save(cfg: dict, config_path: str | None = None):
     """Save config to file (strips injected API keys before saving)."""
-    path = Path(config_path) if config_path else DEFAULT_CONFIG_PATH
+    path = resolve_config_path(config_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
     clean = json.loads(json.dumps(cfg))
     for provider in clean.get("providers", {}).values():
         provider.pop("api_key", None)

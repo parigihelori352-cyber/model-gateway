@@ -1,10 +1,11 @@
 """CLI entry point — unified command-line interface for all capabilities"""
 import argparse
 import json
+import shutil
 import sys
 from pathlib import Path
 
-from .config import load, save, get_capability
+from .config import EXAMPLE_CONFIG_PATH, load, resolve_config_path, save, get_capability
 from .client import ModelGatewayClient
 
 
@@ -13,7 +14,12 @@ def _make_client_and_cap(tool_name: str) -> tuple[ModelGatewayClient, dict]:
     cfg = load()
     cap = get_capability(cfg, tool_name)
     if not cap:
-        print(f"Error: capability '{tool_name}' not found in config.json", file=sys.stderr)
+        path = resolve_config_path()
+        print(
+            f"Error: capability '{tool_name}' was not found in {path}.\n"
+            "Run 'mg config init' to create a starter configuration, then set its API-key environment variables.",
+            file=sys.stderr,
+        )
         sys.exit(1)
     return ModelGatewayClient(cfg), cap
 
@@ -52,7 +58,9 @@ def cmd_plan(args):
 
 def cmd_review(args):
     # If argument is a file path, read it
-    if not getattr(args, 'stdin', False):
+    if getattr(args, "stdin", False):
+        args.code = sys.stdin.read()
+    else:
         path = Path(args.code)
         if path.exists() and path.is_file():
             args.code = path.read_text(encoding="utf-8")
@@ -77,7 +85,22 @@ def cmd_translate(args):
 def cmd_config(args):
     """Config management."""
     cfg = load()
-    if args.action == "list":
+    if args.action == "init":
+        destination = resolve_config_path()
+        if destination.exists() and not args.force:
+            print(f"Configuration already exists: {destination}", file=sys.stderr)
+            print("Use 'mg config init --force' to replace it.", file=sys.stderr)
+            return
+        if not EXAMPLE_CONFIG_PATH.exists():
+            print("Starter configuration is missing from this installation.", file=sys.stderr)
+            sys.exit(1)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(EXAMPLE_CONFIG_PATH, destination)
+        print(f"Created starter configuration: {destination}")
+        print("Set OPENAI_API_KEY (or change providers/models in that file) before making a request.")
+    elif args.action == "path":
+        print(resolve_config_path())
+    elif args.action == "list":
         safe = {k: v for k, v in cfg.items() if k != "providers"}
         # Show providers without keys
         safe["providers"] = {
@@ -165,9 +188,10 @@ def main():
 
     # === config ===
     c = subparsers.add_parser("config", help="Manage configuration")
-    c.add_argument("action", choices=["list", "get", "set"])
+    c.add_argument("action", choices=["init", "list", "get", "set", "path"])
     c.add_argument("key", nargs="?", default=None)
     c.add_argument("value", nargs="?", default=None)
+    c.add_argument("--force", action="store_true", help="Replace an existing configuration when used with init")
 
     args = parser.parse_args()
 

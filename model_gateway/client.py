@@ -148,7 +148,7 @@ class ModelGatewayClient:
         client = self._get_client(provider_name)
         messages = self._build_messages(capability, arguments)
 
-        max_tokens = capability.get("max_output_tokens", 4096)
+        max_tokens = arguments.get("max_tokens") or capability.get("max_output_tokens", 4096)
 
         # Reasoning params
         extra_body = {}

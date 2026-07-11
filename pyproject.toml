@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "model-gateway"
-version = "0.1.0"
+version = "0.2.0"
 description = "Define MCP tools in JSON, not Python. One config file, any model, any role."
 readme = "README.md"
 license = { text = "MIT" }
@@ -29,8 +29,8 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/your-username/model-gateway"
-Repository = "https://github.com/your-username/model-gateway"
+Homepage = "https://github.com/parigihelori352-cyber/model-gateway"
+Repository = "https://github.com/parigihelori352-cyber/model-gateway"
 
 [project.scripts]
 mg = "model_gateway.cli:main"
